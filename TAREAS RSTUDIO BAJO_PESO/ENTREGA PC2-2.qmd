@@ -1,0 +1,129 @@
+---
+title: "Trabajo Grupal: Bondad de Ajuste"
+format: html
+author:
+    name:
+        - Grupo 4<br>
+        - Becker Rodriguez, Carola Stephany<br>
+        - Burgos Vega, Janai Valentina<br>
+        - Medina Rupay, Ximena Saraí<br>
+        - Quispe Torres Briseth Diana<br> 
+editor:
+    markdown:
+        wrap: 80
+---
+
+## 1. Librerías
+
+```{r}
+#| message: false
+library(tidyverse)
+library(here)
+library(rio)
+
+theme_set(theme_light())
+```
+
+## 2. Cargando Datos
+
+```{r}
+data <- import(here("s07/01-data", "bajo_peso.csv"))
+data_p <- data |> 
+    as_tibble()
+head(data_p)
+```
+
+## 3. Bondad de Ajuste
+
+### 3.1. Para Datos Contínuos
+
+Identificaremos cuáles son las variables contínuas que tenemos en el conjunto de
+datos. Luego, aplicaremos las pruebas de Shapiro-Wilk para poder determinar el ajuste de la distribución de la variable.
+
+### 3.1.1 Prueba de Shapiro
+
+Utilizaremos la prueba de Shapiro-Wilk para determinar si los datos se ajustan a una distribución normal.
+
+```{r}
+result_test_peso_madre <- shapiro.test(data_p$peso_madre)
+print(shapiro.test(data_p$peso_madre))
+
+data_p |> 
+    ggplot(aes(peso_madre)) + 
+    geom_histogram(
+        aes(y = ..density..), 
+        fill = "#2a9d8f"
+    ) + 
+    geom_density() + 
+    labs(
+        title = paste0(
+            "Distribución del Peso de la Gestante", 
+            "\n", 
+            "P-Valor (Dist. Normal) = ", round(result_test_peso_madre$p.value, 4)
+        ),
+        x = "Peso (en Kg)",
+        y = "Densidad"
+    )
+```
+
+Se puede apreciar que en el caso del peso de la madre, no se tiene evidencia estadística suficiente para afirmar que sigue una distribución normal. Se rechaza la hipótesis nula.
+
+```{r}
+result_test_peso_nacer <- shapiro.test(data_p$peso_nacer)
+print(shapiro.test(data_p$peso_nacer))
+
+data_p |> 
+    ggplot(aes(peso_nacer)) + 
+    geom_histogram(
+        aes(y = ..density..), 
+        fill = "#2a9d8f"
+    ) + 
+    geom_density() + 
+    labs(
+        title = paste0(
+            "Distribución del Peso del Bebé", 
+            "\n", 
+            "P-Valor (Dist. Normal) = ", round(result_test_peso_nacer$p.value, 4)
+        ),
+        x = "Peso (en gr.)",
+        y = "Recuento"
+    )
+```
+
+En el caso del peso del recién nacido, por el contrario, se tiene evidencia estadística suficiente para afirmar que sigue una distribución normal. No se rechaza la hipótesis nula.
+
+## 3.2 Para Datos Categóricos
+
+Para este caso utilizaremos la variable de presencia de bajo peso en la gestante (bajo_peso). Para esto obtendremos una referencia de los valores observados bajo muestra de 100 datos.
+
+```{r}
+## Obtenemos muestra
+data_muestra <- sample_n(data_p, 100)
+```
+
+```{r}
+cat("Cantidad de mustra")
+table(data_muestra$bajo_peso)
+cat("Proporción de población")
+prop.table(table(data_p$bajo_peso))
+```
+
+De esta manera, tenemos que el 63% de gestantess no tuvo un peso por debajo de lo normal, mientras que el 37% tuvo un peso que sí fue categorizado como bajo.
+
+### 3.2.1. Prueba Chi-cuadrado
+
+A continuación, vamos a evaluar si la proporción observada de gestantes con bajo peso de lo normal difiere de forma significativa de la proporción esperada.
+
+Para las hipótesis siguientes:
+
+-    **Hipótesis nula (H₀):** No existe una diferencia significativa
+    entre la proporción observada y la esperada.
+
+-   **Hipótesis alternativa (H₁):** Existe una diferencia significativa
+    entre la proporción observada y la esperada.
+
+```{r}
+chisq.test(x = c(63, 37), p = c(0.6878, 0.3122))
+```
+
+Se puede afirmar que hay evidencia estadística suficiente de que no existe diferencia significativa entre la proporción observada y la esperada.

@@ -1,0 +1,273 @@
+---
+title: "Trabajo Grupal: Visualización de Datos"
+author:
+    name:
+        - Grupo 4<br>
+        - Becker Rodriguez, Carola Stephany<br>
+        - Burgos Vega, Janai Valentina<br>
+        - Medina Rupay, Ximena Saraí<br>
+        - Quispe Torres Briseth Diana<br> 
+format: html
+---
+
+## 1. Librerías
+
+```{r}
+#| message: false
+library(tidyverse)
+library(scales)
+library(here)
+library(rio)
+library(GGally)
+
+theme_set(
+    theme_light() + 
+        theme(
+            plot.title = element_text(hjust = 0.5),
+            plot.subtitle = element_text(hjust = 0.5)
+        )
+)
+```
+
+## 2. Cargando Datos
+
+Cargamos el dataset y mostraremos las 5 primeras filas como un tibble.
+
+```{r}
+data <- import(here("s05/01-data", "bajo_peso.csv"))
+data_p <- as_tibble(data)
+head(data_p, 5)
+```
+
+## 3. Exploración de los Datos
+
+### 3.1. Exploración de Tipos de Variables
+
+Utilizaremos la función `str()` para conocer la estructura de nuestro conjunto de datos.
+
+```{r}
+str(data_p)
+```
+
+- 189 registros
+- 5 variables categóricas
+- 5 variables numéricas
+
+### 3.2. Resumen de Variables Categóricas
+
+Se analizarán las variables categóricas mostrando su distribución a través de la librería `ggplot2`.
+
+```{r}
+variables_categoricas <- data_p |> 
+    select_if(is.character) |> 
+    colnames()
+
+for(i in 1:length(variables_categoricas)){
+    cat(paste0("###### ", variables_categoricas[i], " ######\n"))
+    cat("Tabla de Frecuencia Absoluta:\n")
+    print(table(data_p[variables_categoricas[i]], useNA = "ifany"))
+    cat("\n")
+    cat("Tabla de Frecuencia Relativa:\n")
+    print(prop.table(table(data_p[variables_categoricas[i]], useNA = "ifany")))
+    cat("\n")
+}
+```
+
+- La mayoría no tuvo un bajo peso, solo un 31.21% tuvo bajo peso en el embarazo.
+- Casi la mitad es de tez blanca (50.79%).
+- La mayoría no fuma (60.85%), no es hipertensa (93.65%) y no tiene irritabilidad en el útero (85.18%)
+
+```{r}
+data_p |> 
+    select(all_of(variables_categoricas)) |> 
+    count(bajo_peso) |> 
+    mutate(
+        prop = n / sum(n)
+    ) |> 
+    ggplot(aes(x = "", y = prop, fill = bajo_peso)) + 
+    geom_col() + 
+    geom_text(
+        aes(label = percent(prop)), 
+        position = position_stack(0.5),
+        color = "white"
+    ) + 
+    coord_polar(theta = "y") + 
+    labs(
+        title = "Distribución de Casos de Gestantes\nsegún Estado de Bajo Peso",
+        fill = "Tiene bajo peso:"
+    ) + 
+    theme_void() + 
+    scale_fill_discrete(direction = -1) + 
+    theme(
+        legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5)
+    )
+```
+
+- Una minoría del 31% de gestantes se ha determinado que tiene bajo peso.
+- La mayoría de gestantes no cuenta con bajo peso por lo que se especula pueda estar en valores normales.
+
+```{r}
+data_p |> 
+    select(all_of(variables_categoricas)) |> 
+    count(raza) |> 
+    mutate(
+        prop = n / sum(n)
+    ) |> 
+    ggplot(aes(x = "", y = prop, fill = raza)) + 
+    geom_col() + 
+    geom_text(
+        aes(label = percent(prop)), 
+        position = position_stack(0.5)
+    ) + 
+    coord_polar(theta = "y", start = 0) + 
+    labs(
+        title = "Distribución de Casos de Gestantes\nsegún Raza",
+        fill = "Raza:"
+    ) + 
+    theme_void() + 
+    scale_fill_manual(
+        values = c("#cb997e", "#b7b7a4", "#f1e3d3")
+    ) + 
+    theme(
+        legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5)
+    )
+```
+
+```{r}
+data_p |> 
+    select(all_of(variables_categoricas)) |> 
+    count(fuma) |> 
+    mutate(
+        prop = n / sum(n)
+    ) |> 
+    ggplot(aes(x = "", y = prop, fill = fuma)) + 
+    geom_col() + 
+    geom_text(
+        aes(label = percent(prop)), 
+        position = position_stack(0.5),
+        color = "white"
+    ) + 
+    coord_polar(theta = "y", start = 0) + 
+    labs(
+        title = "Gestantes: Proporción que Fuma vs. No Fuma",
+        fill = "¿Fuma?:"
+    ) + 
+    theme_void() + 
+    scale_fill_manual(
+        values = c("#219ebc", "#bb3e03")
+    ) + 
+    theme(
+        legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5)
+    )
+```
+
+```{r}
+data_p |> 
+    select(all_of(variables_categoricas)) |> 
+    count(hipertension) |> 
+    mutate(
+        prop = n / sum(n)
+    ) |> 
+    ggplot(aes(x = "", y = prop, fill = hipertension)) + 
+    geom_col() + 
+    geom_text(
+        aes(label = percent(prop)), 
+        position = position_stack(0.5),
+        color = "white"
+    ) + 
+    coord_polar(theta = "y", start = 0) + 
+    labs(
+        title = "Distribución de Casos de Gestantes\nsegún Tenencia de Hipertensión",
+        fill = "Tiene hipertensión:"
+    ) + 
+    theme_void() + 
+    scale_fill_manual(
+        values = c("#a3b18a", "#e07a5f")
+    ) + 
+    theme(
+        legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5)
+    )
+```
+
+```{r}
+data_p |> 
+    select(all_of(variables_categoricas)) |> 
+    count(irritabilidad_utero) |> 
+    mutate(
+        prop = n / sum(n)
+    ) |> 
+    ggplot(aes(x = "", y = prop, fill = irritabilidad_utero)) + 
+    geom_col() + 
+    geom_text(
+        aes(label = percent(prop)), 
+        position = position_stack(0.5)
+    ) + 
+    coord_polar(theta = "y", start = 0) + 
+    labs(
+        title = "Distribución de Casos de Gestantes\nsegún Tenencia de Irritabilidad en Útero",
+        fill = "Tiene irritabilidad en útero:"
+    ) + 
+    theme_void() + 
+    scale_fill_manual(
+        values = c("#ffcad4", "#9d8189")
+    ) + 
+    theme(
+        legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5)
+    )
+```
+
+- La mayoría no tuvo un bajo peso, solo un 31.21% tuvo bajo peso en el embarazo.
+- Casi la mitad es de tez blanca (50.79%).
+- La mayoría no fuma (60.85%), no es hipertensa (93.65%) y no tiene irritabilidad en el útero (85.18%)
+
+
+### 3.3. Resumen de Variables Contínuas
+
+A continuación se revisarán las distribuciones de las variables numéricas
+
+```{r}
+variables_continuas <- data_p |> 
+    select_if(is.numeric) |> 
+    colnames()
+```
+
+```{r}
+matriz_histogramas <- function(data, variables_numericas){
+    lista_histogramas <- list()
+    for(i in 1:length(variables_numericas)){
+        lista_histogramas[[i]] <- data |> 
+            ggplot(aes(!!sym(variables_numericas[i]))) +
+            geom_histogram(bins = 10, fill = "steelblue") + 
+            labs(
+                title = str_replace(variables_numericas[i], "_", " ") |> 
+                    str_to_upper(),
+                y = "Recuento",
+                x = ""
+            ) + 
+            theme(
+                panel.grid = element_blank()
+            )
+    }
+
+    return(patchwork::wrap_plots(lista_histogramas))
+}
+
+matriz_histogramas(data_p, variables_continuas)
+```
+
+```{r}
+ggpairs(
+    data_p |> 
+        select(all_of(variables_continuas), fuma), 
+    mapping = aes(color = fuma)
+)
+```
+
+- En general no se encuentran patrones que representen una relación marcada entre la edad de la madre, peso de la madre, número de partos prematuros, número de visitas médicas y peso del bebé al nacer.
+- Se destaca que, de acuerdo al hábito tabático (lo vemos en el gráfico de cajas), las **gestantes que sí fuman**, suelen ser de **menor edad**, tienen **menor peso**, **más partos prematuros**, **más visitas médicas** y con **bebé con menor peso al nacer** en comparación con las que no suelen fumar. Esto destaca la importancia de no consumir tabaco para tener un periodo de gestación normal y controlado.
+

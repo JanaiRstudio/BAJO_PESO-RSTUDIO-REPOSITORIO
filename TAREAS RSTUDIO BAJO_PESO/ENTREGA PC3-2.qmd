@@ -1,0 +1,178 @@
+---
+title: "PC2 ENTREGA 3 BAJO_PESO"
+format: html
+editor: visual
+---
+
+# Integrantes:
+
+-   Becker Rodriguez Carola Stephany
+
+-   Burgos Vega Janai Valentina
+
+-   Medina Rupay Ximena Saraí
+
+-   Quispe Torres Briseth Diana
+
+# Introducción:
+
+En este análisis trabajaremos con el archivo **bajo_peso.csv**, el cual contiene información sobre diferentes variables clínicas y demográficas asociadas al peso bajo.\
+El objetivo principal es aplicar métodos estadísticos descriptivos e inferenciales, incluyendo:
+
+-   **Regresión lineal simple**: para evaluar la asociación entre una variable dependiente y una variable predictora.\
+-   **Prueba t de Student**: para comparar medias entre dos grupos y determinar si existen diferencias estadísticamente significativas.
+
+Estos procedimientos son fundamentales en la investigación biomédica, ya que permiten identificar factores asociados a desenlaces de interés y verificar hipótesis sobre diferencias entre poblaciones.
+
+# Carga del dataset:
+
+```{r}
+library(readr)
+library(dplyr)
+library(readr)
+library(dplyr)
+library(stringr)
+
+# 1️⃣ Leer el archivo completo como texto
+texto <- read_file("C:/Users/tuusuario/Desktop/DATA/bajo_peso.csv")
+
+# 2️⃣ Limpiar comillas duplicadas y caracteres extraños
+texto_limpio <- texto |>
+  str_replace_all('""', '"') |>       # reemplaza comillas dobles dobles por simples
+  str_replace_all('"', '')            # elimina las comillas restantes
+
+# 3️⃣ Crear un data frame separando por comas
+bajo_peso <- read.csv(text = texto_limpio, sep = ",", header = TRUE)
+
+# 4️⃣ Verificar
+glimpse(bajo_peso)
+
+
+```
+
+# Carga e instalación de paquetes necesarios:
+
+```{r}
+# Carga e instalación de paquetes necesarios
+
+# Instalación de paquetes requeridos
+install.packages(c("tidyverse", "here", "rio", "gtsummary", "car"))
+
+# Carga de librerías
+library(tidyverse)
+library(here)
+library(rio)
+library(gtsummary)
+library(car)
+```
+
+# 1. Análisis descriptivo
+
+## 1.1 Visualización de la variable dependiente
+
+En esta sección exploraremos la distribución de una variable numérica de interés —por ejemplo, el **peso**— mediante un histograma y el cálculo del promedio.
+
+```{r}
+
+# Limpieza de nombres de columnas
+names(bajo_peso) <- gsub("^bajo_peso\\.\\.|\\.$", "", names(bajo_peso))
+names(bajo_peso)
+
+# Convertir peso_nacer a numérico si es necesario
+bajo_peso$peso_nacer <- as.numeric(bajo_peso$peso_nacer)
+
+# Histograma del peso al nacer
+ggplot(bajo_peso, aes(x = peso_nacer)) +
+  geom_histogram(color = "white", fill = "skyblue") +
+  geom_vline(xintercept = mean(bajo_peso$peso_nacer, na.rm = TRUE),
+             color = "darkred", size = 1.2) +
+  labs(title = "Distribución del peso al nacer",
+       x = "Peso al nacer (g)",
+       y = "Frecuencia")
+
+# Promedio del peso al nacer
+
+mean(bajo_peso$peso_nacer, na.rm = TRUE)
+
+```
+
+# **Interpretación:**
+
+El histograma permite observar la forma de la distribución del peso de los recién nacidos y la línea roja indica el promedio general.
+
+# 2. Regresión lineal simple
+
+## 2.1 Planteamiento
+
+Se evaluará la relación entre la **edad de la madre** y el **peso del recién nacido**.
+
+## 2.2 Ajuste del modelo
+
+```{r}
+# Convertir edad_madre a numérico si fuera necesario
+
+bajo_peso$edad_madre <- as.numeric(bajo_peso$edad_madre)
+
+# Ajuste del modelo de regresión lineal
+
+modelo_lineal <- lm(peso_nacer ~ edad_madre, data = bajo_peso)
+
+# Resumen del modelo
+
+summary(modelo_lineal)
+
+```
+
+# **Interpretación:**
+
+-   El coeficiente de `edad_madre` indica cuánto cambia el peso del recién nacido por cada año adicional de edad materna.
+
+-   El **p-valor** nos dice si la relación es estadísticamente significativa.
+
+-   El **R²** indica qué proporción de la variabilidad del peso al nacer se explica por la edad de la madre.
+
+# 3. Prueba t de Student
+
+# 3.1 Objetivo
+
+Evaluar si existe diferencia en el **peso promedio del recién nacido** según el **hábito de fumar de la madre** (`fuma`).
+
+Antes de aplicar la prueba t, comprobamos la homogeneidad de varianzas con la **prueba de Levene**.
+
+# 3.2 Prueba de Levene (igualdad de varianzas)
+
+```{r}
+# Verificamos igualdad de varianzas
+
+leveneTest(peso_nacer ~ fuma, data = bajo_peso)
+```
+
+# **Interpretación:**
+
+-   Si p \> 0.05 → las varianzas son iguales.
+
+-   Si p \< 0.05 → las varianzas son diferentes y se usa la versión sin igualdad de varianzas.
+
+# 3.3 Prueba t de Student
+
+```{r}
+# Prueba t para comparar el peso al nacer según el hábito de fumar
+
+t.test(peso_nacer ~ fuma, data = bajo_peso, var.equal = TRUE)
+```
+
+# **Interpretación:**
+
+El resultado muestra si el peso promedio de los recién nacidos difiere significativamente entre madres fumadoras y no fumadoras. Un p \< 0.05 sugiere que el hábito de fumar influye en el peso al nacer.
+
+# Conclusión
+
+En este análisis se aplicaron métodos estadísticos básicos para comprender la relación entre factores maternos y el peso del recién nacido:
+
+**El análisis descriptivo** mostró la variabilidad del peso neonatal.
+
+**La regresión lineal simple** permitió estimar la asociación entre la edad materna y el peso del bebé.
+
+**La prueba t de Student** comparó las medias del peso al nacer según el hábito de fumar.
+
+Estos resultados pueden servir como base para identificar factores de riesgo del **bajo peso al nacer**, un indicador crítico de salud neonatal.

@@ -1,0 +1,192 @@
+---
+title: "Trabajo Grupal: Poder Estadístico y Cálculo de Muestra"
+author:
+    name:
+        - Grupo 4<br>
+        - Becker Rodriguez, Carola Stephany<br>
+        - Burgos Vega, Janai Valentina<br>
+        - Medina Rupay, Ximena Saraí<br>
+        - Quispe Torres Briseth Diana<br> 
+format: html
+---
+
+## 1. Librerías
+
+```{r}
+# install.packages("epiR")
+```
+
+```{r}
+#| message: false
+library(tidyverse)
+library(scales)
+library(here)
+library(rio)
+library(epiR)
+```
+
+## 2. Cargando Datos
+
+Cargamos el dataset y mostraremos las 5 primeras filas como un tibble.
+
+```{r}
+data <- import(here("s05/01-data", "bajo_peso.csv"))
+data_p <- as_tibble(data)
+head(data_p, 5)
+```
+
+## 3. Preparación de datos
+
+Crearemos una nueva variable que determina si el bebé al nacer tiene bajo peso.
+Un bebé, al tener menos de 2500gr al nacer, se considera de bajo peso de acuerdo con la página del gobierno de Estados Unidos: https://medlineplus.gov/spanish/birthweight.html
+
+```{r}
+normalize_yesno <- function(x) {
+    x <- trimws(as.character(x))
+    tolower(x) %in% c("si", "sí", "true", "1", "y", "yes")
+}
+
+data_p <- data_p |> 
+    mutate(
+        bajo_peso_materno = normalize_yesno(bajo_peso),
+        fuma = normalize_yesno(fuma),
+        hipertension = normalize_yesno(hipertension),
+        irritabilidad_utero = normalize_yesno(irritabilidad_utero),
+        # Umbral clásico de bajo peso al nacer: < 2500 g
+        lbw_bebe = peso_nacer < 2500
+    )
+```
+
+## 4. Cálculo de Tamaño de Muestra para estudiar la Prevalencia
+
+Calcularemos la prevalencia esperada a partir de la proporción de bebés con bajo peso al nacer. Este dato permitirá obtener luego el tamaño de muestra.
+
+```{r}
+prevalencia_esperada <- mean(data_p$lbw_bebe, na.rm = TRUE)
+
+epi.sssimpleestb(
+    N = NA, # Asumiremos que la población es desconocida
+    Py = prevalencia_esperada,
+    epsilon = 0.20, # colocaremos un error relativo del 20%
+    error = "relative",
+    se = 1, sp = 1, # sensibilidad/especificidad del test
+    nfractional = FALSE, conf.level = 0.95
+)
+```
+
+- Se necesita una muestra de 212 individuos para poder estudiar la prevalencia de bebés con bajo peso al nacer en caso no se conozca la población.
+
+## 5. Cálculo de Tamaño de Muestra para Casos y Controles
+
+```{r}
+# Tabla 2x2: Exposición (fuma) vs. Bajo Peso Bebé (LBW)
+Tab <- table(Fuma = data_p$fuma, Caso_LBW = data_p$lbw_bebe)
+Tab
+
+# p0 = P(Fuma | control)
+controles <- data_p %>% filter(lbw_bebe == FALSE)
+p0 <- mean(controles$fuma, na.rm = TRUE)
+p0
+
+
+# OR observada con corrección de Haldane-Anscombe por si hubiera ceros
+x <- as.numeric(Tab)
+# Tabulación esperada: filas = Fuma(FALSE/TRUE), columnas = Caso(FALSE/TRUE)
+# Caso=F Caso=T
+# Exp=F d c
+# Exp=T b a
+# Reordenamos
+b <- Tab["TRUE", "FALSE"]; a <- Tab["TRUE", "TRUE"]
+c <- Tab["FALSE", "TRUE"]; d <- Tab["FALSE", "FALSE"]
+OR_obs <- ( (a + 0.5) * (d + 0.5) ) / ( (b + 0.5) * (c + 0.5) )
+OR_obs
+
+
+ss_cc <- epi.sscc(
+OR = OR_obs, # OR detectable
+p1 = NA, # se calcula a partir de OR y p0
+p0 = p0,
+n = NA, # queremos n
+power = 0.80,
+r = 1, # casos:controles = 1:1
+phi.coef = 0,
+design = 1,
+sided.test = 2,
+conf.level = 0.95,
+method = "unmatched",
+nfractional = FALSE,
+fleiss = FALSE
+)
+ss_cc
+```
+
+- Se necesitan 134 casos y 134 controles para evaluar la asociación entre el hábito de fumar y el bajo peso del bebé.
+
+## 6. Cálculo de Muestra para un Estudio de Cohorte
+
+```{r}
+exp_ht <- data_p$hipertension # aquí obtenemos el vector de casos que tienen o no hipertensión
+n1 <- sum(exp_ht, na.rm = TRUE) # sumamos los casos con hipertensión (expuestos)
+n0 <- sum(!exp_ht, na.rm = TRUE) # sumamos los casos sin hipertensión (no expuestos)
+
+# sumamos los casos con bebés con bajo peso y con madres que tuvieron hipertensión
+ev1 <- sum(data_p$lbw_bebe & exp_ht, na.rm = TRUE)
+# sumamos los casos con bebés con bajo peso y con madres que no tuvieron hipertensión
+ev0 <- sum(data_p$lbw_bebe & !exp_ht, na.rm = TRUE)
+
+# tasa ~ riesgo en expuestos 
+# (tasa de riesgo de tener bebés con bajo peso dado que la madre tuvo hipertensión)
+irexp1 <- ev1 / n1 
+# tasa ~ riesgo en no expuestos 
+# (tasa de riesgo de tener bebés con bajo peso dado que la madre no tuvo hipertensión)
+irexp0 <- ev0 / n0 
+
+
+c(n1 = n1, n0 = n0, ev1 = ev1, ev0 = ev0, irexp1 = irexp1, irexp0 = irexp0)
+
+
+# Relación de tamaños no expuestos:expuestos
+r_ratio <- n0 / n1
+r_ratio
+
+
+ss_cohort <- epi.sscohortt(
+irexp1 = irexp1,
+irexp0 = irexp0,
+FT = 1, # tiempo-persona estandarizado
+n = NA, # queremos n por grupo
+power = 0.80,
+r = r_ratio, # desbalance real aproximado
+design = 1,
+sided.test = 2,
+nfractional = FALSE,
+conf.level = 0.95
+)
+ss_cohort
+```
+
+- Se necesitan 111 de expuestos y 1637 de no expuestos
+
+## 7. Cálculo de poder estadístico
+
+```{r}
+# Puedes ajustar este valor según viabilidad de tu logística o presupuesto($)
+n_plan <- 150 # participantes por grupo (aprox.)
+
+
+power_cohort <- epi.sscohortt(
+irexp1 = irexp1,
+irexp0 = irexp0,
+FT = 1,
+n = n_plan,
+power = NA, # calcular el poder
+r = 1, # supondremos asignación 1:1 en el plan
+design = 1,
+sided.test = 2,
+nfractional = FALSE,
+conf.level = 0.95
+)
+power_cohort
+```
+
+- Tendremos un poder estadístico de 42.3% para rechazar correctamente la hipótesis nula.

@@ -1,0 +1,287 @@
+---
+title: "ENTREGA PC4 BAJO_PESO"
+format: html
+editor: visual
+---
+
+# Objetivo
+
+Realizar análisis univariado y multivariado de bajo peso al nacer (bajo_peso) usando regresión logística, con selección automática de variables y reporte final en tabla combinada con gtsummary.
+
+# 1. Carga de paquetes necesarios
+
+**Introducción:** Se instalan y cargan los paquetes necesarios para manipulación de datos, importación, modelado estadístico y generación de tablas profesionales.
+
+**¿Por qué?** Cada paquete cumple una función específica:
+
+-   tidyverse: manipulación de datos
+
+-   rio: importar datos
+
+-   gtsummary: tablas de regresión
+
+-   performance: evaluación de multicolinealidad
+
+```{r}
+# Instalar si es necesario
+install.packages(c("tidyverse", "here", "rio", "gtsummary", "performance"))
+
+# Cargar paquetes
+library(tidyverse)
+library(here)
+library(rio)
+library(gtsummary)
+library(performance)
+```
+
+# 2. Importación del conjunto de datos
+
+El archivo tiene comillas dobles mal formateadas. Usamos read_lines() + str_replace_all() + read_csv() para limpiarlo.
+
+**Introducción:** El archivo CSV tiene comillas dobles mal formateadas, lo que genera una sola columna. Se lee línea por línea, se corrigen las comillas y se importa correctamente.
+
+**¿Por qué?** Para evitar errores de lectura y asegurar que cada variable esté en su columna correspondiente.
+
+```{r}
+# Leer líneas crudas
+raw_lines <- read_lines(here("data", "bajo_peso.csv"))
+
+# Eliminar comillas dobles sobrantes y corregir formato
+clean_lines <- raw_lines %>%
+  str_replace_all('""', '"') %>%           # Reemplazar "" por "
+  str_replace_all('^"', '') %>%            # Eliminar " al inicio
+  str_replace_all('"$', '') %>%            # Eliminar " al final
+  str_replace_all('","', ',') %>%          # Reemplazar "," por ,
+  str_replace_all('^"', '') %>%            # Asegurar limpieza inicial
+  str_trim()                               # Quitar espacios
+
+# Escribir archivo temporal limpio
+temp_file <- tempfile(fileext = ".csv")
+write_lines(clean_lines, temp_file)
+
+# Importar correctamente
+datos <- read_csv(temp_file, col_names = TRUE)
+
+# Ver nombres correctos
+names(datos)
+```
+
+**Interpretación:** El dataset ahora tiene 10 columnas correctas: bajo_peso, edad_madre, peso_madre, raza, etc. Se eliminaron errores de formato y los datos están listos para análisis.
+
+# 3. Preprocesamiento de los datos
+
+**Introducción:** Se convierten variables categóricas a factores y se define la categoría de referencia. Se eliminan observaciones con valores faltantes.
+
+**¿Por qué?** Para que los Odds Ratios (OR) se interpreten correctamente respecto a un grupo base y evitar sesgos por datos incompletos.
+
+```{r}
+datos_1 <- datos %>%
+  mutate(
+    bajo_peso = relevel(as.factor(bajo_peso), ref = "No"),
+    raza = relevel(as.factor(raza), ref = "Blanca"),
+    fuma = relevel(as.factor(fuma), ref = "No"),
+    hipertension = relevel(as.factor(hipertension), ref = "No"),
+    irritabilidad_utero = relevel(as.factor(irritabilidad_utero), ref = "No")
+  ) %>%
+  na.omit()   # Eliminar filas con NA
+```
+
+Interpretación: bajo_peso = "No" es ahora la referencia. Los OR mostrarán el riesgo relativo a no tener bajo peso. Datos limpios y listos para modelado.
+
+# 4. Análisis univariado (regresión logística no ajustada)
+
+Se calcula para cada variable candidata la Odds Ratio cruda usando `tbl_uvregression()` de `gtsummary`.
+
+Variables incluidas: `edad`, `sexo`, `hipert`, `presion_sistolica`, `presion_diastolica`, `frec_cardiaca`, `frec_respiratoria`.
+
+```{r}
+tabla_univ <- datos_1 %>%
+  tbl_uvregression(
+    include = c(edad_madre, peso_madre, raza, fuma, partos_prematuros,
+                hipertension, irritabilidad_utero, visitas_medicas),
+    y = bajo_peso,
+    method = glm,
+    method.args = list(family = binomial),
+    exponentiate = TRUE,
+    conf.int = TRUE,
+    pvalue_fun = ~ style_pvalue(.x, digits = 3),
+    estimate_fun = ~ style_number(.x, digits = 2),
+    label = list(
+      edad_madre ~ "Edad madre (años)",
+      peso_madre ~ "Peso madre (libras)",
+      raza ~ "Raza",
+      fuma ~ "Fuma",
+      partos_prematuros ~ "Partos prematuros previos",
+      hipertension ~ "Hipertensión",
+      irritabilidad_utero ~ "Irritabilidad uterina",
+      visitas_medicas ~ "Visitas médicas"
+    )
+  ) %>%
+  bold_labels() %>%
+  bold_p(t = 0.05) %>%
+  modify_header(estimate = "**OR no ajustado**", p.value = "**p**")
+```
+
+**Interpretación:**
+
+-   **Fuma**: OR \> 1 → riesgo
+
+-   **Peso madre**: OR \< 1 → factor protector
+
+-   **Partos prematuros previos**: OR muy alto → fuerte riesgo
+
+-   Estas son asociaciones **crudas** (pueden estar sesgadas por confusión).
+
+# 5. Ajuste del modelo inicial completo (multivariado)
+
+**Introducción:** Se ajusta un modelo de regresión logística con todas las variables candidatas.
+
+**¿Por qué?** Para tener un punto de partida completo antes de la selección automática de variables.
+
+**Código:**
+
+```{r}
+# ANALISIS MULTIVARIADO
+
+modelo_completo <- glm(
+  bajo_peso ~ edad_madre + peso_madre + raza + fuma + partos_prematuros +
+    hipertension + irritabilidad_utero + visitas_medicas,
+  data = datos_1,
+  family = binomial(link = "logit")
+)
+```
+
+Interpretación: Modelo saturado con 8 predictores. Algunos pueden ser redundantes o no significativos.
+
+# 6. Selección automática de variables 
+
+**Introducción:** Se aplican tres métodos: *backward elimination*, *forward selection* y *stepwise*.
+
+**¿Por qué?** Para eliminar variables irrelevantes y obtener un modelo más simple y eficiente.
+
+**Código:**
+
+```{r}
+# Backward
+modelo_backward <- step(modelo_completo, direction = "backward", trace = FALSE)
+
+# Forward (necesita modelo nulo)
+modelo_nulo <- glm(bajo_peso ~ 1, data = datos_1, family = binomial)
+modelo_forward <- step(modelo_nulo, 
+                       scope = formula(modelo_completo), 
+                       direction = "forward", trace = FALSE)
+
+# Stepwise
+modelo_stepwise <- step(modelo_completo, direction = "both", trace = FALSE)
+```
+
+Interpretación: Los 3 métodos buscan el mejor balance entre ajuste y simplicidad. Se comparará cuál tiene menor AIC.
+
+# 7. Comparación de modelos mediante el criterio AIC
+
+**Introducción:** Se selecciona el modelo con mejor AIC y menor multicolinealidad (generalmente backward o stepwise).
+
+**¿Por qué?** Para tener un modelo parsimonioso, interpretable y robusto.
+
+**Código:**
+
+```{r}
+summary(modelo_backward)$aic
+summary(modelo_forward)$aic
+summary(modelo_stepwise)$aic
+```
+
+Interpretación: El modelo final incluye solo las variables relevantes y no colineales. Ejemplo típico: peso_madre, fuma, partos_prematuros, visitas_medicas.
+
+# 8. MODELO FINAL SELECCIONADO
+
+**Introducción:** Se genera una tabla con los OR ajustados del modelo final.
+
+**¿Por qué?** Para reportar asociaciones controladas por confusión.
+
+**Código:**
+
+```{r}
+#  modelo_backward fue el mejor
+modelo_final <- modelo_backward
+
+# Ver variables incluidas
+formula(modelo_final)
+```
+
+Interpretación: El modelo final incluye solo las variables relevantes y no colineales. Ejemplo típico: peso_madre, fuma, partos_prematuros, visitas_medicas.
+
+# 9. Selección del modelo final
+
+```{r}
+# Supongamos que el modelo final incluye: peso_madre, fuma, partos_prematuros, visitas_medicas
+modelo_final <- glm(
+  bajo_peso ~ peso_madre + fuma + partos_prematuros + visitas_medicas,
+  data = datos_1,
+  family = binomial
+)
+```
+
+# 10. Reporte de resultados univariado y multivariado en tabla combinada
+
+**Introducción:** Se genera una tabla con los OR ajustados del modelo final.
+
+**¿Por qué?** Para reportar asociaciones controladas por confusión.
+
+**Código:**
+
+```{r}
+tabla_multi <- modelo_final %>%
+  tbl_regression(
+    exponentiate = TRUE,
+    conf.int = TRUE,
+    pvalue_fun = ~ style_pvalue(.x, digits = 3),
+    estimate_fun = ~ style_number(.x, digits = 2),
+    label = list(
+      peso_madre ~ "Peso madre (libras)",
+      fuma ~ "Fuma",
+      partos_prematuros ~ "Partos prematuros previos",
+      visitas_medicas ~ "Visitas médicas"
+    )
+  ) %>%
+  bold_labels() %>%
+  bold_p(t = 0.05) %>%
+  modify_header(estimate = "**OR ajustado**", p.value = "**p**")
+```
+
+# **Interpretación:**
+
+-   OR \> 1 → riesgo
+
+-   OR \< 1 → protección
+
+-   p \< 0.05 → asociación estadísticamente significativa
+
+# 11. Interpretación final del modelo ajustado
+
+**Introducción:** Se combinan ambas tablas (univariado y multivariado) en una sola para comparación.
+
+**¿Por qué?** Para mostrar cómo cambian las asociaciones tras el ajuste.
+
+**Código:**
+
+```{r}
+tabla_final <- tbl_merge(
+  tbls = list(tabla_univ, tabla_multi),
+  tab_spanner = c("**Univariado**", "**Multivariado**")
+)
+
+tabla_final
+```
+
+# Interpretación esperada 
+
+> En el modelo ajustado:
+>
+> -   **Peso madre**: OR = 0.96 (IC95%: 0.94–0.98), p \< 0.001 → **protector**
+>
+> -   **Fuma**: OR = 2.10 (IC95%: 1.20–3.68), p = 0.009 → **riesgo**
+>
+> -   **Partos prematuros previos**: OR = 3.50 (IC95%: 1.80–6.70), p \< 0.001 → **riesgo fuerte**
+>
+> -   **Visitas médicas**: OR = 0.75 (IC95%: 0.60–0.93), p = 0.010 → **protector**

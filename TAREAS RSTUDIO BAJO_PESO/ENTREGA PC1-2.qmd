@@ -1,0 +1,181 @@
+---
+title: "Tarea: Estadística Descriptiva - Resumen de Datos"
+author: 
+  name:
+    - Becker Rodriguez, Carola Stephany<br>
+    - Burgos Vega, Janai Valentina<br>
+    - Medina Rupay, Ximena Saraí<br>
+    - Quispe Torres Briseth Diana<br>
+    - Grupo 4
+format: html
+---
+
+## Instalación de librerías
+
+```{r}
+# install.packages(c("tidyverse", "skimr", "janitor", "gtsummary"))
+# install.packages(c("finalfit", "flextable"))
+```
+
+## 1. Librerías
+
+```{r}
+#| message: false
+library(tidyverse)
+library(here)
+library(rio)
+library(gtsummary)
+```
+
+## 2. Cargando Datos
+
+```{r}
+data <- import(here("s03/01-data", "bajo_peso.csv"))
+
+## Convirtiendo en tibble
+data_p <- as_tibble(data)
+head(data_p)
+```
+
+## 3. Exploración de Datos
+
+## 3.1. Explorando tipos de variables
+
+```{r}
+str(data_p)
+```
+
+- 189 registros
+- 5 variables categóricas
+- 5 variables numéricas
+
+## 3.2. Resumen de Variables Categóricas
+
+A continuación se revisarán las distribuciones de frecuencias de las variables categóricas.
+
+```{r}
+variables_categoricas <- data_p |> 
+    select_if(is.character) |> 
+    colnames()
+
+for(i in 1:length(variables_categoricas)){
+    cat(paste0("###### ", variables_categoricas[i], " ######\n"))
+    cat("Tabla de Frecuencia Absoluta:\n")
+    print(table(data_p[variables_categoricas[i]], useNA = "ifany"))
+    cat("\n")
+    cat("Tabla de Frecuencia Relativa:\n")
+    print(prop.table(table(data_p[variables_categoricas[i]], useNA = "ifany")))
+    cat("\n")
+}
+```
+
+- La mayoría no tuvo un bajo peso, solo un 31.21% tuvo bajo peso en el embarazo.
+- Casi la mitad es de tez blanca (50.79%).
+- La mayoría no fuma (60.85%), no es hipertensa (93.65%) y no tiene irritabilidad en el útero (85.18%)
+
+## 3.3. Resumen de Variables Contínuas
+
+A continuación se revisarán las distribuciones de las variables numéricas
+
+```{r}
+variables_continuas <- data_p |> 
+    select_if(is.numeric) |> 
+    colnames()
+
+par(mfrow = c(2, 3))
+hist(data_p$edad_madre, 
+     xlab = "Edad", 
+     main = "Histograma de la Edad de la Madre",
+     col = "#118ab2", 
+     border = "white")
+hist(data_p$peso_madre, 
+     xlab = "Peso en Kg", 
+     main = "Histograma del Peso de la Madre",
+     col = "#118ab2", 
+     border = "white")
+hist(data_p$partos_prematuros, 
+     xlab = "Nro. de Partos",
+     main = "Histograma de Partos Prematuros",
+     col = "#118ab2", 
+     border = "white")
+hist(data_p$visitas_medicas, 
+     xlab = "Nro. Visitas",
+     main = "Histograma de Visitas Médicas\nque realizó la Madre",
+     col = "#118ab2", 
+     border = "white")
+hist(data_p$peso_nacer, 
+     xlab = "Peso en gr",
+     main = "Histograma del Peso del Bebé al nacer",
+     col = "#118ab2", 
+     border = "white")
+```
+
+```{r}
+data_p |> 
+    select(all_of(variables_continuas)) |> 
+    rename_with(~str_replace_all(.x, "_", "")) |> 
+    summarise(
+        across(
+            everything(), 
+            list(mean = mean, median = median, sd = sd, min = min, max = max, IQR = IQR)
+        )
+    ) |> 
+    pivot_longer(
+        cols = everything(),
+        names_to = "indicadores",
+        values_to = "valor"
+    ) |> 
+    separate(
+        indicadores, into = c("variable", "indicadores"), sep = "_"
+    ) |> 
+    pivot_wider(names_from = "variable", values_from = "valor") |> 
+    gt::gt() |> 
+    gt::cols_label(
+        `indicadores` = "Indicadores",
+        `edadmadre` = "Edad Madre",
+        `pesomadre` = "Peso Madre",
+        `partosprematuros` = "Partos Prematuros",
+        `visitasmedicas` = "Visitas Médicas",
+        `pesonacer` = "Peso (gr.) al nacer"
+    )
+```
+
+- La edad promedio de la madre es de 23 años
+- El peso promedio de la madre gestante es de 129Kg
+- Prácticamente no hubo partos prematuros, solo se tuvo 3 casos
+- Se tuvo pocas visitas médicas en promedio, solo un máximo de 6.
+- El promedio de peso en gramos del bebé al nacer es de 2944.59 gr.
+- Solo se observa posible comportamiento normal en el peso del bebé al nacer
+
+```{r}
+## Creando variable de grupo de edad (lo haremos por quintiles):
+quintiles_edad <- quantile(data_p$edad_madre, 
+                           probs = c(0, 0.2, 0.4, 0.6, 0.8, 1), 
+                           na.rm = TRUE)
+
+data_p <- data_p |> 
+    mutate(
+        grupo_edad = cut(edad_madre, 
+                         breaks = quintiles_edad, 
+                         include.lowest = TRUE, 
+                         right = FALSE)
+    )
+```
+
+Ahora que tenemos la variable de grupo de edad, podemos realizar análisis cruzados con la función `tbl_summary`
+
+```{r}
+data_p |> 
+    select(
+        grupo_edad, 
+        all_of(variables_continuas),
+        all_of(variables_categoricas)
+    ) |> 
+    tbl_summary(
+        by = bajo_peso
+    )
+```
+
+- En las personas que sí tuvieron bajo peso durante el embarazo se puede apreciar que la edad promedio es de 22 años, con un mínimo de 19 años y máximo de 25 años.
+- Dentro de las que sí tuvieron bajo peso, un 27% tuvo 1 parto prematuro respecto al 6.2% de los casos que no tuvieron bajo peso.
+- Se destaca que los bebés de las madres con bajo peso también tuvieron un peso bajo respecto a los que tenían no tenían bajo peso (2,211 gr. vs 3,267 gr.)
